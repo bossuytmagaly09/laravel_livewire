@@ -210,11 +210,14 @@ class extends Component {
                             </td>
                             <td class="px-6 py-4">
                                 <div class="text-sm font-semibold text-gray-900">
-                                    {{ $ticket->subject }}
+                                    <a
+                                        href="{{ route('tickets.show', $ticket) }}"
+                                        class="transition hover:text-blue-600 hover:underline"
+                                    >
+                                    </a>
                                 </div>
-                                <div class=" mt-1 line-clamp-2 text-sm
-                                     text-gray-500
-                                ">
+                                {{ $ticket->subject }}
+                                <div class="mt-1 line-clamp-2 text-sm text-gray-500">
                                     {{ $ticket->description }}
                                 </div>
                             </td>
