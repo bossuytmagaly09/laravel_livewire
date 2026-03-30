@@ -1,6 +1,9 @@
 <?php
+
 namespace App\Models;
+
 use Illuminate\Database\Eloquent\Model;
+
 class Ticket extends Model
 {
     protected $fillable = [
@@ -27,8 +30,8 @@ class Ticket extends Model
         return match ($this->status) {
             'open' => 'bg-blue-100 text-blue-700', // blauwe badge voor open
             'in_progress' => 'bg-yellow-100 text-yellow-700', // gele badge voor in behandeling
-            'closed' => 'bg-green-100 text-green-700', // groene badge voor gesloten badge
-            default => 'bg-gray-100 text-gray-700', // neutrale fallback
+            'closed' => 'bg-green-100 text-green-700', // groene badge voor gesloten
+            default => 'bg-gray-100 text-gray-700', // neutrale fallback badge
         };
     }
 
@@ -38,7 +41,6 @@ class Ticket extends Model
             'low' => 'Laag', // label voor lage prioriteit
             'medium' => 'Normaal', // label voor normale prioriteit
             'high' => 'Hoog', // label voor hoge prioriteit
-
             default => 'Onbekend', // fallback voor onverwachte waarden
         };
     }
@@ -51,5 +53,14 @@ class Ticket extends Model
 
             default => 'bg-gray-100 text-gray-700', // fallback badge
         };
+    }
+
+    public function isOpen(): bool
+    {
+        return $this->status === 'open'; // helper om snel te checken of ticket open staat
+    }
+    public function isClosed(): bool
+    {
+        return $this->status === 'closed'; // helper om snel te checken of ticket gesloten is
     }
 }
