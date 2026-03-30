@@ -9,3 +9,6 @@ Route::livewire('/tickets', 'pages::tickets.index') // overzichtspagina metlisti
 
 Route::livewire('/tickets/create', 'pages::tickets.create') // pagina om een nieuw ticket aan te maken
     ->name('tickets.create');
+
+Route::livewire('/tickets/{ticket}', 'pages::tickets.show')
+    ->name('tickets.show');
