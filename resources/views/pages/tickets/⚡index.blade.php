@@ -1,16 +1,19 @@
 <?php
 
-use App\Models\Ticket;
-use Livewire\Attributes\Computed;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\Url;
-use Livewire\Component;
-use Livewire\WithPagination;
+use App\Models\Ticket;// nodig om tickets op te halen, updaten en verwijderen
+use Livewire\Attributes\Computed;// om tickets() als computed property te gebruiken
+use Livewire\Attributes\Layout;// om deze page aan de layout te koppelen
+use Livewire\Attributes\Url;// om filters in de URL te bewaren
+use Livewire\Component;// basis Livewire component
+use Livewire\WithPagination;// nodig voor Livewire pagination
 
 new
-#[Layout('layouts.app')]
+#[Layout('layouts.app')] // koppel deze page aan resources/views/layouts/app.blade.php
+
 class extends Component {
     use WithPagination;
+
+    // activeer Livewire pagination binnen deze component
 
     #[Url(as: 'q')]
     public string $search = ''; // zoekterm voor onderwerp en beschrijving
@@ -25,9 +28,9 @@ class extends Component {
     public string $sortField = 'created_at'; // standaard sorteren op aanmaakdatum
 
     #[Url(as: 'dir')]
-    public string $sortDirection = 'desc'; // nieuwste tickets eerst
+    public string $sortDirection = 'desc'; // nieuwste tickets eerst tonen
 
-    public int $perPage = 10; // aantal tickets per pagina
+    public int $perPage = 10; // aantal records per pagina
 
     public function updatingSearch(): void
     {
@@ -36,31 +39,72 @@ class extends Component {
 
     public function updatingStatus(): void
     {
-        $this->resetPage(); // ga terug naar pagina 1 zodra statusfilter verandert
+        $this->resetPage(); // ga terug naar pagina 1 zodra de statusfilter verandert
     }
 
     public function updatingPriority(): void
     {
-        $this->resetPage(); // ga terug naar pagina 1 zodra prioriteitsfilter verandert
+        $this->resetPage(); // ga terug naar pagina 1 zodra de prioriteitsfilter verandert
     }
 
     public function sortBy(string $field): void
     {
-        $allowedFields = ['id', 'subject', 'status', 'priority', 'created_at']; // whitelist van toegelaten sorteervelden
-
+        $allowedFields = ['id', 'subject', 'status', 'priority',
+            'created_at']; // whitelist van toegelaten sorteervelden
         if (!in_array($field, $allowedFields, true)) {
-            return; // negeer ongeldige sorteervelden
+            return; // stop als iemand een ongeldig sorteerveld probeert door te geven
         }
 
         if ($this->sortField === $field) {
-            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc'; // toggle richting als je op dezelfde kolom klikt
-
+            $this->sortDirection = $this->sortDirection === 'asc' ? 'desc' : 'asc'; // draai de sorteerrichting om op dezelfde kolom
         } else {
-            $this->sortField = $field; // nieuw sorteerveld instellen
-            $this->sortDirection = 'asc'; // bij een nieuwe kolom starten we ascendant
+            $this->sortField = $field; // stel een nieuw sorteerveld in
+            $this->sortDirection = 'asc'; // start nieuwe kolom standaard ascendant
+        }
+        $this->resetPage(); // zet pagination terug naar pagina 1 na sorteerwijziging
+    }
+
+    public function clearFilters(): void
+    {
+        $this->search = ''; // wis zoekterm
+        $this->status = ''; // wis statusfilter
+        $this->priority = ''; // wis prioriteitsfilter
+        $this->sortField = 'created_at'; // herstel standaardsortering
+        $this->sortDirection = 'desc'; // herstel standaard sorteerrichting
+        $this->resetPage(); // ga terug naar pagina 1
+    }
+
+    public function changeStatus(int $ticketId, string $status): void
+    {
+        $allowedStatuses = ['open', 'in_progress', 'closed']; // whitelist van geldige statussen
+        if (!in_array($status, $allowedStatuses, true)) {
+            return; // stop als de status ongeldig is
         }
 
-        $this->resetPage(); // terug naar pagina 1 na wijziging van sortering
+        $ticket = Ticket::find($ticketId); // zoek het ticket op basis van zijn id
+
+        if (!$ticket) {
+            return; // stop als het ticket niet meer bestaat
+        }
+
+        $ticket->update([
+            'status' => $status, // schrijf de nieuwe status weg
+        ]);
+
+        session()->flash('success', 'De status van het ticket werd succesvol aangepast.'); // toon feedback bovenaan
+    }
+
+    public function delete(int $ticketId): void
+    {
+        $ticket = Ticket::find($ticketId); // zoek het ticket op basis van zijn id
+        if (!$ticket) {
+            return; // stop als het ticket niet bestaat
+        }
+        $ticket->delete(); // verwijder het ticket uit de database
+
+        session()->flash('success', 'Het ticket werd succesvol verwijderd.'); // toon feedback bovenaan
+
+        $this->resetPage(); // blijf op een geldige pagina na delete
     }
 
     #[Computed]
@@ -68,19 +112,21 @@ class extends Component {
     {
         return Ticket::query()->when($this->search !== '', function ($query) {
             $query->where(function ($subQuery) {
-                $subQuery->where('subject', 'like', '%' . $this->search . '%')
-                    ->orWhere('description', 'like', '%' . $this->search . '%');
+                $subQuery->where('subject', 'like', '%' . $this->search .
+                    '%')->orWhere('description', 'like', '%' .
+                    $this->search . '%'); // zoek in onderwerp of beschrijving
             });
         })
             ->when($this->status !== '', function ($query) {
-                $query->where('status', $this->status);
+                $query->where('status', $this->status); // filter op gekozen status
             })
             ->when($this->priority !== '', function ($query) {
-                $query->where('priority', $this->priority);
+                $query->where('priority', $this->priority); // filter op gekozen prioriteit
             })
-            ->orderBy($this->sortField, $this->sortDirection)
-            ->paginate($this->perPage);
+            ->orderBy($this->sortField, $this->sortDirection) // passortering toe
+            ->paginate($this->perPage); // geef paginated resultaat terug
     }
+
 };
 ?>
 <div class="min-h-screen bg-gray-100 py-10">
@@ -91,17 +137,31 @@ class extends Component {
                     Tickets overzicht
                 </h1>
                 <p class="mt-2 text-sm text-gray-600">
-                    Bekijk, zoek en filter support tickets via een Livewire 4
-                    page component.
+                    Bekijk, filter en beheer support tickets rechtstreeks
+                    vanuit het overzicht.
                 </p>
             </div>
-            <a
-                href="{{ route('tickets.create') }}"
-                class="inline-flex items-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-            >
-                Nieuw ticket
-            </a>
+            <div class="flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    wire:click="clearFilters"
+                    class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
+                >
+                    Filters resetten
+                </button>
+                <a
+                    href="{{ route('tickets.create') }}"
+                    class="inline-flex items-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                    Nieuw ticket
+                </a>
+            </div>
         </div>
+        @if (session()->has('success'))
+            <div class="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                {{ session('success') }}
+            </div>
+        @endif
         <div class="mb-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
             <div class="grid gap-4 md:grid-cols-3">
                 <div>
@@ -166,7 +226,6 @@ class extends Component {
                             <button wire:click="sortBy('subject')"
                                     class="inline-flex items-center gap-2">
                                 Onderwerp
-
                                 @if ($sortField === 'subject')
                                     <span>{{ $sortDirection === 'asc' ? '↑' : '↓' }}</span>
                                 @endif
@@ -199,65 +258,116 @@ class extends Component {
                                 @endif
                             </button>
                         </th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-600">
+                            Snelle acties
+                        </th>
+                        <th class="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-600">
+                            Beheer
+                        </th>
                     </tr>
                     </thead>
+
                     <tbody class="divide-y divide-gray-200 bg-white">
                     @forelse ($this->tickets as $ticket)
                         <tr wire:key="ticket-{{ $ticket->id }}"
-                            class="hover:bg-gray-50">
+                            class="align-top hover:bg-gray-50">
                             <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
                                 #{{ $ticket->id }}
                             </td>
+
                             <td class="px-6 py-4">
                                 <div class="text-sm font-semibold text-gray-900">
-                                    <a
-                                        href="{{ route('tickets.show', $ticket) }}"
-                                        class="transition hover:text-blue-600 hover:underline"
+                                    <a href="{{ route('tickets.show', $ticket) }}"
+                                       class="transition hover:text-blue-600 hover:underline"
                                     >
+                                        {{ $ticket->subject }}
                                     </a>
                                 </div>
-                                {{ $ticket->subject }}
+
                                 <div class="mt-1 line-clamp-2 text-sm text-gray-500">
                                     {{ $ticket->description }}
                                 </div>
                             </td>
-                            <td class="whitespace-nowrap px-6 py-4 text-sm">
-                                @if ($ticket->status === 'open')
-                                    <span class=" inline-flex rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-                                        Open
-                                    </span>
-                                @elseif ($ticket->status === 'in_progress')
-                                    <span class="inline-flex rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-700">
-                                        In behandeling
-                                    </span>
-                                @else
-                                    <span class="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                                        Gesloten
-                                    </span>
-                                @endif
+
+                            <td class=" whitespace-nowrap px-6 py-4 text-sm">
+                                <span
+                                    class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{ $ticket->statusBadgeClasses() }}">
+                                    {{ $ticket->statusLabel() }}
+                                </span>
                             </td>
                             <td class="whitespace-nowrap px-6 py-4 text-sm">
-                                @if ($ticket->priority === 'low')
-                                    <span class="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-                                        Laag
-                                    </span>
-                                @elseif ($ticket->priority === 'medium')
-                                    <span class="inline-flex rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
-                                        Normaal
-                                    </span>
-                                @else
-                                    <span class="inline-flex rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-                                        Hoog
-                                    </span>
-                                @endif
+                                <span
+                                    class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{ $ticket->priorityBadgeClasses() }}">
+                                    {{ $ticket->priorityLabel() }}
+                                </span>
                             </td>
-                            <td class="whitespace-nowrap px-6 py-4 text sm text-gray-600">
+
+                            <td class="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
                                 {{ $ticket->created_at->format('d/m/Y H:i') }}
+                            </td>
+
+                            <td class="px-6 py-4">
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        wire:click="changeStatus({{ $ticket->id }}, 'open')"
+                                        wire:loading.attr="disabled"
+                                        wire:target="changeStatus({{ $ticket->id }}, 'open')"
+                                        class="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium
+                                                text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Open
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        wire:click="changeStatus({{ $ticket->id }}, 'in_progress')"
+                                        wire:loading.attr="disabled"
+                                        wire:target="changeStatus({{ $ticket->id }}, 'in_progress')"
+                                        class="inline-flex items-center rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs font-medium
+                                            text-yellow-700 transition hover:bg-yellow-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        In behandeling
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        wire:click="changeStatus({{ $ticket->id }}, 'closed')"
+                                        wire:loading.attr="disabled"
+                                        wire:target="changeStatus({{ $ticket->id }}, 'closed')"
+                                        class="inline-flex items-center rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium
+                                                text-green-700 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Gesloten
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex justify-end gap-3">
+                                    <a
+                                        href="{{ route('tickets.show', $ticket) }}"
+                                        class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
+                                    >
+                                        Openen
+                                    </a>
+
+                                    <button
+                                        type="button"
+                                        wire:click="delete({{ $ticket->id }})"
+                                        wire:confirm="Weet je zeker dat je dit ticket wilt verwijderen?"
+                                        wire:loading.attr="disabled"
+                                        wire:target="delete({{ $ticket->id }})"
+                                        class="inline-flex items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm
+                                                transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        Verwijderen
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="px-6 py-10 text-center text-sm text-gray-500">
+                            <td colspan="7" class="px-6 py-10 text-center text-sm text-gray-500">
                                 Geen tickets gevonden voor de huidige filters.
                             </td>
                         </tr>
@@ -265,7 +375,6 @@ class extends Component {
                     </tbody>
                 </table>
             </div>
-
             <div class="border-t border-gray-200 px-6 py-4">
                 {{ $this->tickets->links(data: ['scrollTo' => false]) }}
             </div>
