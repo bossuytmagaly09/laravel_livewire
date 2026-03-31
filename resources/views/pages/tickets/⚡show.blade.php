@@ -217,6 +217,8 @@ class extends Component
             </div>
         </div>
 
+        <livewire:ticket-overview-stats :ticket="$ticket" :key="'ticket-overview-stats-' . $ticket->id" /> {{-- nested Livewire component voor live statistieken, luistert naar events van comments en attachments --}}
+
         <livewire:ticket-comments :ticket="$ticket" :key="'ticket-comments-' . $ticket->id" /> {{-- nested Livewire component voor comments en interne notities --}}
 
         <livewire:ticket-attachments :ticket="$ticket" :key="'ticket-attachments-' . $ticket->id" /> {{-- nested Livewire component voor bestandsuploads --}}

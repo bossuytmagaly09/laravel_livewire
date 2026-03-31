@@ -28,7 +28,7 @@ class extends Component
             ]
         );
 
-        $this->ticket->comments()->create([ // maak via de relatie een nieuw comment aan
+        $comment = $this->ticket->comments()->create([ // maak via de relatie een nieuw comment aan
             'content' => $validated['content'], // sla inhoud op
             'type' => $validated['type'], // sla type op
         ]);
@@ -36,6 +36,8 @@ class extends Component
         $this->reset('content'); // maak textarea opnieuw leeg
 
         $this->type = 'comment'; // zet type terug op de standaardwaarde
+
+        $this->dispatch('comment-created', commentId: $comment->id, ticketId: $this->ticket->id); // dispatch event voor andere componenten op de pagina
 
         session()->flash('comments_success', 'De reactie werd succesvol toegevoegd.'); // toon succesfeedback binnen commentscomponent
     }
@@ -49,6 +51,8 @@ class extends Component
         }
 
         $comment->delete(); // verwijder het gevonden comment
+
+        $this->dispatch('comment-deleted', commentId: $commentId, ticketId: $this->ticket->id); // dispatch event na delete
 
         session()->flash('comments_success', 'De reactie werd succesvol verwijderd.'); // toon succesfeedback binnen commentscomponent
     }
