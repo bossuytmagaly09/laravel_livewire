@@ -219,5 +219,7 @@ class extends Component
 
         <livewire:ticket-comments :ticket="$ticket" :key="'ticket-comments-' . $ticket->id" /> {{-- nested Livewire component voor comments en interne notities --}}
 
+        <livewire:ticket-attachments :ticket="$ticket" :key="'ticket-attachments-' . $ticket->id" /> {{-- nested Livewire component voor bestandsuploads --}}
+
     </div>
 </div>

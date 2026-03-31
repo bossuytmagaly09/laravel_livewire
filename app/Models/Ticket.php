@@ -1,14 +1,9 @@
 <?php // start van het modelbestand
 
-namespace App\Models;
-// namespace van het model
+namespace App\Models;// namespace van het model
 
-use Illuminate\Database\Eloquent\Model;
-
-// basis Eloquent model
-use Illuminate\Database\Eloquent\Relations\HasMany;
-
-// typehint voor hasMany relatie
+use Illuminate\Database\Eloquent\Model;// basis Eloquent model
+use Illuminate\Database\Eloquent\Relations\HasMany;// typehint voor hasMany relaties
 
 class Ticket extends Model // Ticket model
 {
@@ -17,14 +12,17 @@ class Ticket extends Model // Ticket model
         'description', // inhoud van het ticket
         'status', // open, in_progress, closed
         'priority', // low, medium, high
-        'attachment_path', // optioneel uploadpad
-        'content',
-        'type',
+        'attachment_path', // oud optioneel uploadpad uit eerdere modules
     ];
 
     public function comments(): HasMany // relatie naar comments
     {
         return $this->hasMany(Comment::class); // één ticket heeft meerdere comments
+    }
+
+    public function attachments(): HasMany // relatie naar ticketbijlagen
+    {
+        return $this->hasMany(TicketAttachment::class); // één ticket heeft meerdere attachments
     }
 
     public function statusLabel(): string // leesbaar label voor status
@@ -57,7 +55,7 @@ class Ticket extends Model // Ticket model
         };
     }
 
-    public function priorityBadgeClasses(): string // badgeclasses voor prioriteit
+    public function priorityBadgeClasses(): string // badgeclasses voorprioriteit
     {
         return match ($this->priority) { // kies classes op basis van prioriteit
             'low' => 'bg-gray-100 text-gray-700', // neutraal voor laag
@@ -77,4 +75,3 @@ class Ticket extends Model // Ticket model
         return $this->status === 'closed'; // true als status gesloten is
     }
 }
-
