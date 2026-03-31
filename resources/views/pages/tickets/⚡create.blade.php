@@ -6,11 +6,12 @@ use Livewire\Component;
 
 new
 #[Layout('layouts.app')]
-class extends Component {
-    public string $subject = ''; // onderwerp van het ticket
-    public string $description = ''; // beschrijving van het probleem
-    public string $priority = 'medium'; // standaard prioriteit
-    public string $status = 'open'; // standaard status
+class extends Component
+{
+    public string $subject = '';
+    public string $description = '';
+    public string $priority = 'medium';
+    public string $status = 'open';
 
     protected array $rules = [
         'subject' => 'required|min:3|max:255',
@@ -33,19 +34,25 @@ class extends Component {
 
     public function save(): void
     {
-        $validated = $this->validate(); // valideer alle velden
+        $validated = $this->validate();
 
-        Ticket::create($validated); // bewaar het ticket in de database
+        $ticket = Ticket::create($validated); // NIEUW: we bewaren het aangemaakte ticket eerst in een variabele zodat we er meteen activity logging op kunnen uitvoeren
+
+        $ticket->logActivity(
+            'ticket_created',
+            'Ticket aangemaakt',
+            'Het ticket werd voor het eerst opgeslagen in het systeem.'
+        ); // NIEUW: na het aanmaken schrijven we onmiddellijk een eerste activity log weg voor dit ticket
 
         session()->flash('success', 'Het ticket werd succesvol aangemaakt.');
 
-        $this->reset('subject', 'description'); // reset tekstvelden
-        $this->priority = 'medium'; // standaard prioriteit herstellen
-        $this->status = 'open'; // standaard status herstellen
+        $this->reset('subject', 'description');
+        $this->priority = 'medium';
+        $this->status = 'open';
     }
 };
-
 ?>
+
 <div class="min-h-screen bg-gray-100 py-10">
     <div class="mx-auto max-w-3xl px-4">
         <div class="mb-8">
@@ -56,13 +63,16 @@ class extends Component {
                 Maak een nieuw ticket aan via een Livewire 4 page component.
             </p>
         </div>
+
         @if (session()->has('success'))
             <div class="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
                 {{ session('success') }}
             </div>
         @endif
+
         <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
             <form wire:submit="save" class="space-y-6">
+
                 <div>
                     <label for="subject" class="mb-2 block text-sm font-medium text-gray-700">
                         Onderwerp
@@ -78,6 +88,7 @@ class extends Component {
                     <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
+
                 <div>
                     <label for="description" class="mb-2 block text-sm font-medium text-gray-700">
                         Beschrijving
@@ -93,6 +104,7 @@ class extends Component {
                     <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                     @enderror
                 </div>
+
                 <div class="grid gap-6 md:grid-cols-2">
                     <div>
                         <label for="priority" class="mb-2 block text-sm font-medium text-gray-700">
@@ -111,6 +123,7 @@ class extends Component {
                         <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
+
                     <div>
                         <label for="status" class="mb-2 block text-sm font-medium text-gray-700">
                             Status
@@ -124,12 +137,12 @@ class extends Component {
                             <option value="in_progress">In behandeling</option>
                             <option value="closed">Gesloten</option>
                         </select>
-
                         @error('status')
                         <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
                 </div>
+
                 <div class="flex items-center gap-4">
                     <button
                         type="submit"
@@ -138,8 +151,11 @@ class extends Component {
                     >
                         Ticket opslaan
                     </button>
-                    <span wire:loading class="text-sm text-gray-500">Bezig met opslaan...</span>
+                    <span wire:loading class="text-sm text-gray-500">
+                        Bezig met opslaan...
+                    </span>
                 </div>
+
             </form>
         </div>
     </div>

@@ -1,227 +1,227 @@
-<?php // start van de single-file component
+<?php
 
-use App\Models\Ticket; // nodig om het ticket als property te ontvangen
-use Livewire\Attributes\Computed; // nodig voor de computed attachments lijst
-use Livewire\Component; // basis Livewire component
-use Livewire\WithFileUploads; // nodig voor Livewire uploads
-use Illuminate\Support\Facades\Storage; // nodig om bestanden te verwijderen
+use App\Models\Ticket;
+use Livewire\Attributes\Computed;
+use Livewire\Component;
+use Livewire\WithFileUploads;
+use Illuminate\Support\Facades\Storage;
 
 new
 class extends Component
 {
-    use WithFileUploads; // activeer bestandsuploads in deze component
+    use WithFileUploads;
 
-    public Ticket $ticket; // het ticket dat vanuit de parent wordt doorgegeven
+    public Ticket $ticket;
 
-    public $file = null; // tijdelijk geüpload bestand in component-state
+    public $file = null;
 
-    public function save(): void // sla een nieuw bestand op
+    public function save(): void
     {
-        $validated = $this->validate( // valideer de upload
+        $validated = $this->validate(
             [
-                'file' => 'required|file|max:5120|mimes:jpg,jpeg,png,pdf,txt,log,doc,docx', // max 5 MB en alleen toegelaten types
+                'file' => 'required|file|max:5120|mimes:jpg,jpeg,png,pdf,txt,log,doc,docx',
             ],
             [
-                'file.required' => 'Kies een bestand om te uploaden.', // foutmelding voor ontbrekend bestand
-                'file.file' => 'De gekozen upload is ongeldig.', // foutmelding als het geen geldig bestand is
-                'file.max' => 'Het bestand mag maximaal 5 MB groot zijn.', // foutmelding voor te groot bestand
-                'file.mimes' => 'Alleen jpg, jpeg, png, pdf, txt, log, doc en docx zijn toegelaten.', // foutmelding voor ongeldig bestandstype
+                'file.required' => 'Kies een bestand om te uploaden.',
+                'file.file' => 'De gekozen upload is ongeldig.',
+                'file.max' => 'Het bestand mag maximaal 5 MB groot zijn.',
+                'file.mimes' => 'Alleen jpg, jpeg, png, pdf, txt, log, doc en docx zijn toegelaten.',
             ]
         );
 
-        $uploadedFile = $validated['file']; // haal het gevalideerde bestand op
+        $uploadedFile = $validated['file'];
 
-        $path = $uploadedFile->store('ticket-attachments', 'public'); // sla het bestand op in storage/app/public/ticket-attachments
+        $path = $uploadedFile->store('ticket-attachments', 'public');
 
-        $attachment = $this->ticket->attachments()->create([ // maak via de relatie een nieuw attachmentrecord aan
-            'original_name' => $uploadedFile->getClientOriginalName(), // bewaar originele bestandsnaam
-            'file_path' => $path, // bewaar opslagpad
-            'mime_type' => $uploadedFile->getMimeType(), // bewaar mime type
-            'file_size' => $uploadedFile->getSize(), // bewaar bestandsgrootte
+        $attachment = $this->ticket->attachments()->create([
+            'original_name' => $uploadedFile->getClientOriginalName(),
+            'file_path' => $path,
+            'mime_type' => $uploadedFile->getMimeType(),
+            'file_size' => $uploadedFile->getSize(),
         ]);
 
-        $this->reset('file'); // reset het tijdelijke uploadveld
+        $this->ticket->logActivity(
+            'attachment_created',
+            'Bestand geüpload',
+            "Het bestand '{$attachment->original_name}' werd toegevoegd aan dit ticket."
+        ); // NIEUW: na een succesvolle upload registreren we ook het exacte bestand in de activity log
 
-        $this->dispatch('attachment-created', attachmentId: $attachment->id, ticketId: $this->ticket->id); // dispatch event voor andere componenten
+        $this->reset('file');
 
-        session()->flash('attachments_success', 'Het bestand werd succesvol geüpload.'); // toon succesfeedback binnen attachmentscomponent
+        $this->dispatch('attachment-created', attachmentId: $attachment->id, ticketId: $this->ticket->id);
+
+        session()->flash('attachments_success', 'Het bestand werd succesvol geüpload.');
     }
 
-    public function delete(int $attachmentId): void // verwijder een bestaand bestand
+    public function delete(int $attachmentId): void
     {
-        $attachment = $this->ticket->attachments()->find($attachmentId); // zoek het attachment binnen dit ticket
+        $attachment = $this->ticket->attachments()->find($attachmentId);
 
-        if (! $attachment) { // stop als het bestand niet bestaat of niet bij dit ticket hoort
-            return; // defensieve controle
+        if (! $attachment) {
+            return;
         }
 
-        if (Storage::disk('public')->exists($attachment->file_path)) { // check of het fysieke bestand echt bestaat
-            Storage::disk('public')->delete($attachment->file_path); // verwijder het fysieke bestand van disk
+        $originalName = $attachment->original_name; // NIEUW: de originele bestandsnaam bewaren we eerst, zodat we die nog kunnen gebruiken nadat het record verwijderd is
+
+        if (Storage::disk('public')->exists($attachment->file_path)) {
+            Storage::disk('public')->delete($attachment->file_path);
         }
 
-        $attachment->delete(); // verwijder het database record
+        $attachment->delete();
 
-        $this->dispatch('attachment-deleted', attachmentId: $attachmentId, ticketId: $this->ticket->id); // dispatch event na delete
+        $this->ticket->logActivity(
+            'attachment_deleted',
+            'Bestand verwijderd',
+            "Het bestand '{$originalName}' werd verwijderd van dit ticket."
+        ); // NIEUW: ook bestandverwijderingen registreren we expliciet in de historiek van het ticket
 
-        session()->flash('attachments_success', 'Het bestand werd succesvol verwijderd.'); // toon succesfeedback binnen attachmentscomponent
+        $this->dispatch('attachment-deleted', attachmentId: $attachmentId, ticketId: $this->ticket->id);
+
+        session()->flash('attachments_success', 'Het bestand werd succesvol verwijderd.');
     }
 
-    #[Computed] // maak van deze methode een computed property
-    public function attachments() // lijst van attachments voor dit ticket
+    #[Computed]
+    public function attachments()
     {
-        return $this->ticket->attachments() // start vanuit de relatie van het ticket
-        ->latest() // nieuwste bestanden eerst tonen
-        ->get(); // haal alle attachments op
+        return $this->ticket->attachments()
+            ->latest()
+            ->get();
     }
 };
 ?>
 
-<div class="mt-6 space-y-6"> {{-- wrapper rond het volledige attachments blok --}}
+<div class="mt-6 space-y-6">
 
-    @if (session()->has('attachments_success')) {{-- toon succesfeedback na save of delete --}}
-    <div class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"> {{-- succesmelding --}}
-        {{ session('attachments_success') }} {{-- flash message tonen --}}
-    </div>
+    @if (session()->has('attachments_success'))
+        <div class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            {{ session('attachments_success') }}
+        </div>
     @endif
 
-    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"> {{-- kaart met uploadformulier --}}
-
-        <h2 class="mb-4 text-lg font-semibold text-gray-900"> {{-- titel van het uploadblok --}}
-            Bestanden en bijlagen {{-- titeltekst --}}
+    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
+        <h2 class="mb-4 text-lg font-semibold text-gray-900">
+            Bestanden en bijlagen
         </h2>
+        <form wire:submit="save" class="space-y-4">
 
-        <form wire:submit="save" class="space-y-4"> {{-- formulier dat save() uitvoert zonder reload --}}
-
-            <div> {{-- blok voor bestandskeuze --}}
-                <label for="file" class="mb-2 block text-sm font-medium text-gray-700"> {{-- label voor uploadveld --}}
-                    Bestand kiezen {{-- labeltekst --}}
+            <div>
+                <label for="file" class="mb-2 block text-sm font-medium text-gray-700">
+                    Bestand kiezen
                 </label>
                 <input
                     id="file"
                     type="file"
                     wire:model="file"
                     class="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm shadow-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
-                > {{-- file input gekoppeld aan file property --}}
-                @error('file') {{-- foutmelding voor upload --}}
-                <p class="mt-2 text-sm text-red-600">{{ $message }}</p> {{-- fouttekst --}}
+                >
+                @error('file')
+                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                 @enderror
             </div>
 
-            <div wire:loading wire:target="file" class="text-sm text-gray-500"> {{-- feedback tijdens tijdelijk uploaden naar Livewire --}}
-                Bestand wordt voorbereid... {{-- loading tekst --}}
+            <div wire:loading wire:target="file" class="text-sm text-gray-500">
+                Bestand wordt voorbereid...
             </div>
 
-            @if ($file) {{-- toon preview-info zodra gebruiker een bestand gekozen heeft --}}
-            <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"> {{-- info box --}}
-                Klaar om te uploaden:
-                {{ $file->getClientOriginalName() }} {{-- toon gekozen bestandsnaam --}}
-            </div>
+            @if ($file)
+                <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                    Klaar om te uploaden:
+                    {{ $file->getClientOriginalName() }}
+                </div>
             @endif
 
-            <div class="flex items-center gap-4"> {{-- acties onder uploadformulier --}}
+            <div class="flex items-center gap-4">
                 <button
                     type="submit"
                     wire:loading.attr="disabled"
                     wire:target="save,file"
                     class="inline-flex items-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                > {{-- uploadknop --}}
-                    Bestand uploaden {{-- knoptekst --}}
+                >
+                    Bestand uploaden
                 </button>
-                <span wire:loading wire:target="save" class="text-sm text-gray-500"> {{-- loading feedback tijdens save --}}
-                    Bezig met uploaden... {{-- loading tekst --}}
+                <span wire:loading wire:target="save" class="text-sm text-gray-500">
+                    Bezig met uploaden...
                 </span>
             </div>
 
         </form>
     </div>
 
-    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"> {{-- kaart met lijst van bestaande bestanden --}}
-
-        <div class="mb-4 flex items-center justify-between"> {{-- bovenste rij van de lijst --}}
-            <h2 class="text-lg font-semibold text-gray-900"> {{-- titel van de lijst --}}
-                Geüploade bestanden {{-- titeltekst --}}
+    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
+        <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">
+                Geüploade bestanden
             </h2>
-            <span class="text-sm text-gray-500"> {{-- teller rechts --}}
-                {{ $this->attachments->count() }} item(s) {{-- aantal attachments --}}
+            <span class="text-sm text-gray-500">
+                {{ $this->attachments->count() }} item(s)
             </span>
         </div>
 
-        <div class="space-y-4"> {{-- lijst met attachments --}}
-            @forelse ($this->attachments as $attachment) {{-- loop over alle attachments --}}
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4"> {{-- kaart van één attachment --}}
-
-                <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"> {{-- bovenste structuur van het item --}}
-
-                    <div class="min-w-0 flex-1"> {{-- linkerdeel met bestandsinfo --}}
-
-                        <div class="flex flex-wrap items-center gap-3"> {{-- badges en datum --}}
-                            @if ($attachment->isImage()) {{-- als het bestand een afbeelding is --}}
-                            <span class="inline-flex rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700"> {{-- badge voor afbeelding --}}
-                                        Afbeelding {{-- badge tekst --}}
+        <div class="space-y-4">
+            @forelse ($this->attachments as $attachment)
+                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-3">
+                                @if ($attachment->isImage())
+                                    <span class="inline-flex rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700">
+                                        Afbeelding
                                     </span>
-                            @else {{-- voor niet-afbeeldingen --}}
-                            <span class="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700"> {{-- neutrale badge --}}
-                                        Bestand {{-- badge tekst --}}
+                                @else
+                                    <span class="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
+                                        Bestand
                                     </span>
-                            @endif
-                            <span class="text-xs text-gray-500"> {{-- created_at --}}
-                                {{ $attachment->created_at->format('d/m/Y H:i') }} {{-- datum van upload --}}
+                                @endif
+                                <span class="text-xs text-gray-500">
+                                    {{ $attachment->created_at->format('d/m/Y H:i') }}
                                 </span>
+                            </div>
+                            <div class="mt-3 break-all text-sm font-semibold text-gray-900">
+                                {{ $attachment->original_name }}
+                            </div>
+                            <div class="mt-1 text-sm text-gray-500">
+                                {{ $attachment->mime_type ?? 'Onbekend type' }} • {{ $attachment->formattedFileSize() }}
+                            </div>
+                            <div class="mt-3">
+                                <a
+                                    href="{{ $attachment->url() }}"
+                                    target="_blank"
+                                    class="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                                >
+                                    Open bestand
+                                </a>
+                            </div>
                         </div>
-
-                        <div class="mt-3 break-all text-sm font-semibold text-gray-900"> {{-- originele bestandsnaam --}}
-                            {{ $attachment->original_name }} {{-- toon originele naam --}}
+                        <div class="flex items-center gap-3">
+                            <button
+                                type="button"
+                                wire:click="delete({{ $attachment->id }})"
+                                wire:confirm="Weet je zeker dat je dit bestand wilt verwijderen?"
+                                wire:loading.attr="disabled"
+                                wire:target="delete({{ $attachment->id }})"
+                                class="inline-flex items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Verwijderen
+                            </button>
                         </div>
-
-                        <div class="mt-1 text-sm text-gray-500"> {{-- extra bestandsinfo --}}
-                            {{ $attachment->mime_type ?? 'Onbekend type' }} • {{ $attachment->formattedFileSize() }} {{-- mime type en leesbare bestandsgrootte --}}
-                        </div>
-
-                        <div class="mt-3"> {{-- link naar bestand --}}
-                            <a
-                                href="{{ $attachment->url() }}"
-                                target="_blank"
-                                class="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-                            > {{-- knop/link om bestand te openen --}}
-                                Open bestand {{-- linktekst --}}
-                            </a>
-                        </div>
-
                     </div>
 
-                    <div class="flex items-center gap-3"> {{-- rechterdeel met actieknoppen --}}
-                        <button
-                            type="button"
-                            wire:click="delete({{ $attachment->id }})"
-                            wire:confirm="Weet je zeker dat je dit bestand wilt verwijderen?"
-                            wire:loading.attr="disabled"
-                            wire:target="delete({{ $attachment->id }})"
-                            class="inline-flex items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        > {{-- deleteknop --}}
-                            Verwijderen {{-- knoptekst --}}
-                        </button>
-                    </div>
-
+                    @if ($attachment->isImage())
+                        <div class="mt-4">
+                            <img
+                                src="{{ $attachment->url() }}"
+                                alt="{{ $attachment->original_name }}"
+                                class="max-h-64 rounded-xl border border-gray-200 object-contain"
+                            >
+                        </div>
+                    @endif
                 </div>
-
-                @if ($attachment->isImage()) {{-- toon preview als het een afbeelding is --}}
-                <div class="mt-4"> {{-- wrapper rond preview --}}
-                    <img
-                        src="{{ $attachment->url() }}"
-                        alt="{{ $attachment->original_name }}"
-                        class="max-h-64 rounded-xl border border-gray-200 object-contain"
-                    > {{-- afbeeldingspreview --}}
+            @empty
+                <div class="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
+                    Er zijn nog geen bestanden geüpload voor dit ticket.
                 </div>
-                @endif
-
-            </div>
-            @empty {{-- als er nog geen bestanden zijn --}}
-            <div class="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500"> {{-- empty state --}}
-                Er zijn nog geen bestanden geüpload voor dit ticket. {{-- lege melding --}}
-            </div>
             @endforelse
         </div>
-
     </div>
 
 </div>

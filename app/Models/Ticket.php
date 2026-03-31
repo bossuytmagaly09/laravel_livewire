@@ -1,13 +1,13 @@
-<?php // start van het modelbestand
+<?php
 
-namespace App\Models;// namespace van het model
+namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;// basis Eloquent model
-use Illuminate\Database\Eloquent\Relations\HasMany;// typehint voor hasMany relaties
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Ticket extends Model // Ticket model
+class Ticket extends Model
 {
-    protected $fillable = [ // velden die via mass assignment ingevuld mogen worden
+    protected $fillable = [
         'subject', // onderwerp van het ticket
         'description', // inhoud van het ticket
         'status', // open, in_progress, closed
@@ -25,9 +25,23 @@ class Ticket extends Model // Ticket model
         return $this->hasMany(TicketAttachment::class); // één ticket heeft meerdere attachments
     }
 
+    public function activities(): HasMany // relatie naar activity log items
+    {
+        return $this->hasMany(TicketActivity::class); // één ticket heeft meerdere activity items
+    }
+
+    public function logActivity(string $event, string $label, ?string $description = null): void // NIEUW: centrale helper om activity logs weg te schrijven
+    {
+        $this->activities()->create([
+            'event' => $event, // technische sleutel van de actie
+            'label' => $label, // leesbare titel
+            'description' => $description, // extra detail over wat er veranderde
+        ]); // NIEUW: deze helper centraliseert alle activity logging voor dit ticket op één plaats
+    }
+
     public function statusLabel(): string // leesbaar label voor status
     {
-        return match ($this->status) { // zet technische status om naar leesbare tekst
+        return match ($this->status) {
             'open' => 'Open', // label voor open tickets
             'in_progress' => 'In behandeling', // label voor tickets in behandeling
             'closed' => 'Gesloten', // label voor gesloten tickets
@@ -37,7 +51,7 @@ class Ticket extends Model // Ticket model
 
     public function statusBadgeClasses(): string // badgeclasses voor status
     {
-        return match ($this->status) { // kies classes op basis van status
+        return match ($this->status) {
             'open' => 'bg-blue-100 text-blue-700', // blauw voor open
             'in_progress' => 'bg-yellow-100 text-yellow-700', // geel voor in behandeling
             'closed' => 'bg-green-100 text-green-700', // groen voor gesloten
@@ -47,7 +61,7 @@ class Ticket extends Model // Ticket model
 
     public function priorityLabel(): string // leesbaar label voor prioriteit
     {
-        return match ($this->priority) { // zet technische prioriteit om naar leesbare tekst
+        return match ($this->priority) {
             'low' => 'Laag', // label voor lage prioriteit
             'medium' => 'Normaal', // label voor normale prioriteit
             'high' => 'Hoog', // label voor hoge prioriteit
@@ -55,9 +69,9 @@ class Ticket extends Model // Ticket model
         };
     }
 
-    public function priorityBadgeClasses(): string // badgeclasses voorprioriteit
+    public function priorityBadgeClasses(): string // badgeclasses voor prioriteit
     {
-        return match ($this->priority) { // kies classes op basis van prioriteit
+        return match ($this->priority) {
             'low' => 'bg-gray-100 text-gray-700', // neutraal voor laag
             'medium' => 'bg-orange-100 text-orange-700', // oranje voor normaal
             'high' => 'bg-red-100 text-red-700', // rood voor hoog

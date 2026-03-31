@@ -1,108 +1,130 @@
-<?php // start van de single-file component
+<?php
 
-use App\Models\Ticket; // nodig om het ticket als property te ontvangen
-use Livewire\Attributes\Computed; // nodig voor computed comments lijst
-use Livewire\Component; // basis Livewire component
+use App\Models\Ticket;
+use Livewire\Attributes\Computed;
+use Livewire\Component;
 
 new
 class extends Component
 {
-    public Ticket $ticket; // het ticket dat vanuit de parent wordt doorgegeven
+    public Ticket $ticket;
 
-    public string $content = ''; // inhoud van de nieuwe reactie of notitie
+    public string $content = '';
 
-    public string $type = 'comment'; // standaardtype is een gewone comment
+    public string $type = 'comment';
 
-    public function save(): void // sla een nieuwe reactie op
+    public function save(): void
     {
-        $validated = $this->validate( // valideer de invoer
+        $validated = $this->validate(
             [
-                'content' => 'required|min:3', // inhoud is verplicht en moet lang genoeg zijn
-                'type' => 'required|in:comment,note', // alleen geldige types toelaten
+                'content' => 'required|min:3',
+                'type' => 'required|in:comment,note',
             ],
             [
-                'content.required' => 'De inhoud is verplicht.', // foutmelding voor lege inhoud
-                'content.min' => 'De inhoud moet minstens 3 tekens bevatten.', // foutmelding voor te korte inhoud
-                'type.required' => 'Kies een type.', // foutmelding voor ontbrekend type
-                'type.in' => 'Het gekozen type is ongeldig.', // foutmelding voor ongeldig type
+                'content.required' => 'De inhoud is verplicht.',
+                'content.min' => 'De inhoud moet minstens 3 tekens bevatten.',
+                'type.required' => 'Kies een type.',
+                'type.in' => 'Het gekozen type is ongeldig.',
             ]
         );
 
-        $comment = $this->ticket->comments()->create([ // maak via de relatie een nieuw comment aan
-            'content' => $validated['content'], // sla inhoud op
-            'type' => $validated['type'], // sla type op
+        $comment = $this->ticket->comments()->create([
+            'content' => $validated['content'],
+            'type' => $validated['type'],
         ]);
 
-        $this->reset('content'); // maak textarea opnieuw leeg
+        $label = $validated['type'] === 'note' ? 'Interne notitie toegevoegd' : 'Comment toegevoegd'; // NIEUW: we maken het label afhankelijk van het type zodat de activity log menselijker leesbaar wordt
 
-        $this->type = 'comment'; // zet type terug op de standaardwaarde
+        $description = $validated['type'] === 'note'
+            ? 'Een interne notitie werd toegevoegd aan dit ticket.'
+            : 'Een nieuwe comment werd toegevoegd aan dit ticket.'; // NIEUW: ook de beschrijving maken we bewust leesbaar en contextueel
 
-        $this->dispatch('comment-created', commentId: $comment->id, ticketId: $this->ticket->id); // dispatch event voor andere componenten op de pagina
+        $this->ticket->logActivity(
+            'comment_created',
+            $label,
+            $description
+        ); // NIEUW: na het bewaren van een comment of notitie schrijven we meteen een activity logregel weg
 
-        session()->flash('comments_success', 'De reactie werd succesvol toegevoegd.'); // toon succesfeedback binnen commentscomponent
+        $this->reset('content');
+
+        $this->type = 'comment';
+
+        $this->dispatch('comment-created', commentId: $comment->id, ticketId: $this->ticket->id);
+
+        session()->flash('comments_success', 'De reactie werd succesvol toegevoegd.');
     }
 
-    public function delete(int $commentId): void // verwijder een bestaand comment
+    public function delete(int $commentId): void
     {
-        $comment = $this->ticket->comments()->find($commentId); // zoek het comment binnen dit ticket
+        $comment = $this->ticket->comments()->find($commentId);
 
-        if (! $comment) { // stop als het comment niet bestaat of niet bij dit ticket hoort
-            return; // defensieve controle
+        if (! $comment) {
+            return;
         }
 
-        $comment->delete(); // verwijder het gevonden comment
+        $label = $comment->type === 'note' ? 'Interne notitie verwijderd' : 'Comment verwijderd'; // NIEUW: ook bij verwijderen willen we in de historiek duidelijk blijven zien wat voor type item verdwenen is
 
-        $this->dispatch('comment-deleted', commentId: $commentId, ticketId: $this->ticket->id); // dispatch event na delete
+        $description = $comment->type === 'note'
+            ? 'Een interne notitie werd verwijderd van dit ticket.'
+            : 'Een comment werd verwijderd van dit ticket.'; // NIEUW: korte maar leesbare beschrijving voor de activity log
 
-        session()->flash('comments_success', 'De reactie werd succesvol verwijderd.'); // toon succesfeedback binnen commentscomponent
+        $comment->delete();
+
+        $this->ticket->logActivity(
+            'comment_deleted',
+            $label,
+            $description
+        ); // NIEUW: na delete registreren we ook deze actie in de historiek van het ticket
+
+        $this->dispatch('comment-deleted', commentId: $commentId, ticketId: $this->ticket->id);
+
+        session()->flash('comments_success', 'De reactie werd succesvol verwijderd.');
     }
 
-    #[Computed] // maak van deze methode een computed property
-    public function comments() // lijst van comments voor dit ticket
+    #[Computed]
+    public function comments()
     {
-        return $this->ticket->comments() // start vanuit de relatie van het ticket
-        ->latest() // toon nieuwste reacties eerst
-        ->get(); // haal alle comments op
+        return $this->ticket->comments()
+            ->latest()
+            ->get();
     }
 };
 ?>
 
-<div class="mt-6 space-y-6"> {{-- wrapper rond het volledige comments blok --}}
+<div class="mt-6 space-y-6">
 
-    @if (session()->has('comments_success')) {{-- toon succesfeedback na save of delete --}}
-    <div class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"> {{-- succesmelding --}}
-        {{ session('comments_success') }} {{-- flash message tonen --}}
-    </div>
+    @if (session()->has('comments_success'))
+        <div class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            {{ session('comments_success') }}
+        </div>
     @endif
 
-    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"> {{-- kaart met formulier voor nieuwe reactie --}}
-
-        <h2 class="mb-4 text-lg font-semibold text-gray-900"> {{-- titel van het formulier --}}
-            Reacties en interne notities {{-- titeltekst --}}
+    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
+        <h2 class="mb-4 text-lg font-semibold text-gray-900">
+            Reacties en interne notities
         </h2>
+        <form wire:submit="save" class="space-y-4">
 
-        <form wire:submit="save" class="space-y-4"> {{-- formulier dat save() uitvoert zonder reload --}}
-
-            <div> {{-- blok voor type --}}
-                <label for="type" class="mb-2 block text-sm font-medium text-gray-700"> {{-- label voor type --}}
-                    Type {{-- labeltekst --}}
+            <div>
+                <label for="type" class="mb-2 block text-sm font-medium text-gray-700">
+                    Type
                 </label>
                 <select
                     id="type"
                     wire:model="type"
                     class="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                > {{-- dropdown gekoppeld aan type property --}}
-                    <option value="comment">Comment</option> {{-- gewone reactie --}}
-                    <option value="note">Interne notitie</option> {{-- interne notitie --}}
+                >
+                    <option value="comment">Comment</option>
+                    <option value="note">Interne notitie</option>
                 </select>
-                @error('type') {{-- foutmelding voor type --}}
-                <p class="mt-2 text-sm text-red-600">{{ $message }}</p> {{-- fouttekst --}}
+                @error('type')
+                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                 @enderror
             </div>
 
-            <div> {{-- blok voor inhoud --}}
-                <label for="content" class="mb-2 block text-sm font-medium text-gray-700"> {{-- label voor inhoud --}}
-                    Inhoud {{-- labeltekst --}}
+            <div>
+                <label for="content" class="mb-2 block text-sm font-medium text-gray-700">
+                    Inhoud
                 </label>
                 <textarea
                     id="content"
@@ -110,80 +132,72 @@ class extends Component
                     wire:model="content"
                     class="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Schrijf hier je reactie of interne notitie..."
-                ></textarea> {{-- textarea gekoppeld aan content property --}}
-                @error('content') {{-- foutmelding voor inhoud --}}
-                <p class="mt-2 text-sm text-red-600">{{ $message }}</p> {{-- fouttekst --}}
+                ></textarea>
+                @error('content')
+                <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                 @enderror
             </div>
 
-            <div class="flex items-center gap-4"> {{-- acties onder het formulier --}}
+            <div class="flex items-center gap-4">
                 <button
                     type="submit"
                     wire:loading.attr="disabled"
                     wire:target="save"
                     class="inline-flex items-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                > {{-- submitknop --}}
-                    Reactie opslaan {{-- knoptekst --}}
+                >
+                    Reactie opslaan
                 </button>
-                <span wire:loading wire:target="save" class="text-sm text-gray-500"> {{-- loading feedback tijdens save --}}
-                    Bezig met opslaan... {{-- loading tekst --}}
+                <span wire:loading wire:target="save" class="text-sm text-gray-500">
+                    Bezig met opslaan...
                 </span>
             </div>
 
         </form>
     </div>
 
-    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200"> {{-- kaart met historiek van reacties --}}
-
-        <div class="mb-4 flex items-center justify-between"> {{-- bovenste rij van het overzicht --}}
-            <h2 class="text-lg font-semibold text-gray-900"> {{-- titel van de lijst --}}
-                Historiek van reacties {{-- titeltekst --}}
+    <div class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
+        <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-lg font-semibold text-gray-900">
+                Historiek van reacties
             </h2>
-            <span class="text-sm text-gray-500"> {{-- teller rechts --}}
-                {{ $this->comments->count() }} item(s) {{-- aantal comments --}}
+            <span class="text-sm text-gray-500">
+                {{ $this->comments->count() }} item(s)
             </span>
         </div>
 
-        <div class="space-y-4"> {{-- lijst met comments --}}
-            @forelse ($this->comments as $comment) {{-- loop over alle comments --}}
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4"> {{-- kaart van één comment --}}
-
-                <div class="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between"> {{-- bovenste rij per comment --}}
-
-                    <div class="flex flex-wrap items-center gap-3"> {{-- badges en datum --}}
-                        <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{ $comment->typeBadgeClasses() }}"> {{-- type badge --}}
-                            {{ $comment->typeLabel() }} {{-- leesbaar type --}}
+        <div class="space-y-4">
+            @forelse ($this->comments as $comment)
+                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <div class="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {{ $comment->typeBadgeClasses() }}">
+                                {{ $comment->typeLabel() }}
                             </span>
-                        <span class="text-xs text-gray-500"> {{-- created_at --}}
-                            {{ $comment->created_at->format('d/m/Y H:i') }} {{-- datum van de reactie --}}
+                            <span class="text-xs text-gray-500">
+                                {{ $comment->created_at->format('d/m/Y H:i') }}
                             </span>
+                        </div>
+                        <button
+                            type="button"
+                            wire:click="delete({{ $comment->id }})"
+                            wire:confirm="Weet je zeker dat je deze reactie wilt verwijderen?"
+                            wire:loading.attr="disabled"
+                            wire:target="delete({{ $comment->id }})"
+                            class="inline-flex items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            Verwijderen
+                        </button>
                     </div>
-
-                    <button
-                        type="button"
-                        wire:click="delete({{ $comment->id }})"
-                        wire:confirm="Weet je zeker dat je deze reactie wilt verwijderen?"
-                        wire:loading.attr="disabled"
-                        wire:target="delete({{ $comment->id }})"
-                        class="inline-flex items-center rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    > {{-- deleteknop per reactie --}}
-                        Verwijderen {{-- knoptekst --}}
-                    </button>
-
+                    <div class="text-sm leading-6 text-gray-700">
+                        {{ $comment->content }}
+                    </div>
                 </div>
-
-                <div class="text-sm leading-6 text-gray-700"> {{-- inhoud van de reactie --}}
-                    {{ $comment->content }} {{-- eigenlijke commenttekst --}}
+            @empty
+                <div class="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
+                    Er zijn nog geen reacties of interne notities toegevoegd voor dit ticket.
                 </div>
-
-            </div>
-            @empty {{-- als er nog geen comments zijn --}}
-            <div class="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500"> {{-- empty state --}}
-                Er zijn nog geen reacties of interne notities toegevoegd voor dit ticket. {{-- lege melding --}}
-            </div>
             @endforelse
         </div>
-
     </div>
 
 </div>
