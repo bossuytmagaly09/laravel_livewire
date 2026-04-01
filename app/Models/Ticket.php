@@ -2,21 +2,34 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model; // basis Eloquent model
-use Illuminate\Database\Eloquent\Relations\BelongsTo; // nodig voor belongsTo relatie
-use Illuminate\Database\Eloquent\Relations\HasMany; // nodig voor hasMany relaties
+use App\Actions\Tickets\LogTicketActivityAction; // compatibiliteitsbrug naar centrale activity logger
+use App\TicketPriority;                          // enum voor prioriteit
+use App\TicketStatus;                            // enum voor status
+use App\TicketWorkflowStep;                      // enum voor workflow
+use Illuminate\Database\Eloquent\Model;          // basis Eloquent model
+use Illuminate\Database\Eloquent\Relations\BelongsTo; // relatie naar assignee
+use Illuminate\Database\Eloquent\Relations\HasMany;   // relaties naar child records
 
 class Ticket extends Model
 {
     protected $fillable = [
         'subject',          // onderwerp van het ticket
-        'description',      // inhoud van het ticket
-        'status',           // open, in_progress, closed
-        'priority',         // low, medium, high
-        'assigned_user_id', // NIEUW: toegewezen supportmedewerker
-        'workflow_step',    // NIEUW: huidige workflowstap
+        'description',      // beschrijving van het ticket
+        'status',           // status van het ticket
+        'priority',         // prioriteit van het ticket
+        'assigned_user_id', // optionele toegewezen supportmedewerker
+        'workflow_step',    // workflowstap van het ticket
         'attachment_path',  // oudere optionele uploadkolom uit eerdere modules
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'status'        => TicketStatus::class,       // cast status naar enum
+            'priority'      => TicketPriority::class,     // cast prioriteit naar enum
+            'workflow_step' => TicketWorkflowStep::class, // cast workflow naar enum
+        ];
+    }
 
     public function comments(): HasMany
     {
@@ -35,94 +48,79 @@ class Ticket extends Model
 
     public function assignee(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'assigned_user_id'); // NIEUW: toegewezen gebruiker van dit ticket
+        return $this->belongsTo(User::class, 'assigned_user_id'); // optionele toegewezen behandelaar
     }
 
     public function statusLabel(): string
     {
-        return match ($this->status) {
-            'open'        => 'Open',             // leesbaar label voor open
-            'in_progress' => 'In behandeling',   // leesbaar label voor in behandeling
-            'closed'      => 'Gesloten',         // leesbaar label voor gesloten
-            default       => 'Onbekend',         // fallback
-        };
+        return $this->status->label(); // leesbaar statuslabel via enum
     }
 
     public function statusBadgeClasses(): string
     {
-        return match ($this->status) {
-            'open'        => 'bg-blue-100 text-blue-700',     // badgekleur voor open
-            'in_progress' => 'bg-yellow-100 text-yellow-700', // badgekleur voor in behandeling
-            'closed'      => 'bg-green-100 text-green-700',   // badgekleur voor gesloten
-            default       => 'bg-gray-100 text-gray-700',     // fallback badge
-        };
+        return $this->status->badgeClasses(); // badge classes via enum
     }
 
     public function priorityLabel(): string
     {
-        return match ($this->priority) {
-            'low'    => 'Laag',      // label voor lage prioriteit
-            'medium' => 'Normaal',   // label voor normale prioriteit
-            'high'   => 'Hoog',      // label voor hoge prioriteit
-            default  => 'Onbekend',  // fallback
-        };
+        return $this->priority->label(); // leesbaar prioriteitslabel via enum
     }
 
     public function priorityBadgeClasses(): string
     {
-        return match ($this->priority) {
-            'low'    => 'bg-gray-100 text-gray-700',     // badgekleur voor lage prioriteit
-            'medium' => 'bg-orange-100 text-orange-700', // badgekleur voor normale prioriteit
-            'high'   => 'bg-red-100 text-red-700',       // badgekleur voor hoge prioriteit
-            default  => 'bg-gray-100 text-gray-700',     // fallback badge
-        };
+        return $this->priority->badgeClasses(); // badge classes via enum
     }
 
     public function workflowLabel(): string
     {
-        return match ($this->workflow_step) {
-            'new'              => 'Nieuw',          // NIEUW: ticket is net aangemaakt
-            'triage'           => 'Triage',         // NIEUW: ticket zit in eerste beoordeling
-            'investigating'    => 'Onderzoek',      // NIEUW: ticket zit in analyse
-            'waiting_customer' => 'Wacht op klant', // NIEUW: extra info van klant nodig
-            'resolved'         => 'Opgelost',       // NIEUW: inhoudelijk opgelost
-            default            => 'Onbekend',       // fallback
-        };
+        return $this->workflow_step->label(); // leesbaar workflowlabel via enum
     }
 
     public function workflowBadgeClasses(): string
     {
-        return match ($this->workflow_step) {
-            'new'              => 'bg-slate-100 text-slate-700',   // NIEUW: badgekleur voor new
-            'triage'           => 'bg-indigo-100 text-indigo-700', // NIEUW: badgekleur voor triage
-            'investigating'    => 'bg-purple-100 text-purple-700', // NIEUW: badgekleur voor investigating
-            'waiting_customer' => 'bg-amber-100 text-amber-700',   // NIEUW: badgekleur voor waiting_customer
-            'resolved'         => 'bg-emerald-100 text-emerald-700', // NIEUW: badgekleur voor resolved
-            default            => 'bg-gray-100 text-gray-700',    // fallback badge
-        };
+        return $this->workflow_step->badgeClasses(); // badge classes via enum
     }
 
     public function assigneeName(): string
     {
-        return $this->assignee?->name ?? 'Niet toegewezen'; // NIEUW: leesbare assigneenaam of fallback
+        return $this->assignee?->name ?? 'Niet toegewezen'; // leesbare assigneenaam of fallback
     }
 
     public function isOpen(): bool
     {
-        return $this->status === 'open'; // helper om te checken of ticket open staat
+        return $this->status === TicketStatus::Open; // helper om te checken of ticket open is
     }
 
     public function isClosed(): bool
     {
-        return $this->status === 'closed'; // helper om te checken of ticket gesloten staat
+        return $this->status === TicketStatus::Closed; // helper om te checken of ticket gesloten is
     }
 
-    public function logActivity(string $description): void
-    {
-        $this->activities()->create([
-            'event'       => 'ticket_event',    // activiteitstype
-            'label'       => 'Ticket activiteit', // leesbaar label
-            'description' => $description,      // activiteitstekst
-        ]);
+    public function logActivity(
+        string $eventOrDescription,
+        ?string $label = null,
+        ?string $description = null,
+    ): void {
+        // OUDE stijl 1:
+        // $ticket->logActivity('Ticket aangemaakt.')
+        if ($label === null && $description === null) {
+            app(LogTicketActivityAction::class)->execute(
+                $this,
+                $eventOrDescription, // beschrijving
+                'ticket_event',      // standaard technisch event
+                'Ticket activiteit', // standaard leesbaar label
+            );
+
+            return;
+        }
+
+        // OUDE stijl 2:
+        // $ticket->logActivity('comment_created', 'Comment toegevoegd', '...')
+        app(LogTicketActivityAction::class)->execute(
+            $this,
+            $description ?? '',              // uiteindelijke beschrijving
+            $eventOrDescription,             // technisch event
+            $label ?? 'Ticket activiteit',   // leesbaar label
+        );
     }
 }

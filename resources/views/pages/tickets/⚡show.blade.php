@@ -23,9 +23,9 @@ class extends Component
         $this->ticket          = $ticket;                  // sla route-bound ticket op
         $this->subject         = $ticket->subject;         // laad onderwerp in component-state
         $this->description     = $ticket->description;     // laad beschrijving in component-state
-        $this->status          = $ticket->status;          // laad status in component-state
-        $this->priority        = $ticket->priority;        // laad prioriteit in component-state
-        $this->workflow_step   = $ticket->workflow_step;   // NIEUW: laad workflow in component-state
+        $this->status          = $ticket->status->value;          // laad status in component-state
+        $this->priority        = $ticket->priority->value;        // laad prioriteit in component-state
+        $this->workflow_step   = $ticket->workflow_step->value;   // NIEUW: laad workflow in component-state
         $this->assigned_user_id = $ticket->assigned_user_id ? (string) $ticket->assigned_user_id : ''; // NIEUW: laad assignee of lege string
     }
 
